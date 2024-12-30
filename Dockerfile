@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
 # Add build argument
-ARG HUGGINGFACE_API_KEY
+# ARG HUGGINGFACE_API_KEY
 ENV HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
 
 # System dependencies
@@ -22,17 +22,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # # Environment variables
-# ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1
 # ENV HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
 
 # HuggingFace login at container startup
-# RUN --mount=type=secret,id=hf_token \
-#     HUGGINGFACE_API_KEY=$(cat /run/secrets/hf_token) && \
-#     huggingface-cli login --token $HUGGINGFACE_API_KEY
+RUN --mount=type=secret,id=HUGGINGFACE_API_KEY \
+    HUGGINGFACE_API_KEY=$(cat /run/secrets/HUGGINGFACE_API_KEY) && \
+    huggingface-cli login --token $HUGGINGFACE_API_KEY
 
-RUN mkdir -p ~/.huggingface && \
-    echo "${HUGGINGFACE_API_KEY}" > ~/.huggingface/token && \
-    huggingface-cli login --token ${HUGGINGFACE_API_KEY}
+# RUN mkdir -p ~/.huggingface && \
+#     echo "${HUGGINGFACE_API_KEY}" > ~/.huggingface/token && \
+#     huggingface-cli login --token ${HUGGINGFACE_API_KEY}
 
 # Expose port
 EXPOSE 7860

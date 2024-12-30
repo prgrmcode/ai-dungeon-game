@@ -67,6 +67,8 @@ def initialize_model_pipeline(model_name, force_cpu=False):
         else:
             device = MODEL_CONFIG["main_model"]["device"]
 
+        api_key = get_huggingface_api_key()
+
         # Use 8-bit quantization for memory efficiency
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
@@ -75,6 +77,8 @@ def initialize_model_pipeline(model_name, force_cpu=False):
             use_cache=True,
             device_map="auto",
             low_cpu_mem_usage=True,
+            trust_remote_code=True,
+            token=api_key,  # Add token here
         )
 
         model.config.use_cache = True
@@ -113,8 +117,6 @@ try:
     # model_name = "meta-llama/Llama-3.2-3B-Instruct"
 
     model_name = MODEL_CONFIG["main_model"]["name"]
-
-    api_key = get_huggingface_api_key()
 
     # Initialize the pipeline with memory management
     generator, tokenizer = initialize_model_pipeline(model_name)
