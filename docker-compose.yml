@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  ai-dungeon:
+    build:
+      context: .
+      args:
+        - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    ports:
+      - "7860:7860"
+    environment:
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
