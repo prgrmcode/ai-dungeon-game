@@ -203,6 +203,37 @@ ai_dungeon_game/
 - Hugging Face API key
 
 
+## Deployment Options
+
+### Local Docker Deployment
+```bash
+# Build and run with Docker
+docker-compose --env-file .env up --build
+```
+
+### Hugging Face Spaces Deployment
+1. Fork repository
+2. Connect to Hugging Face Spaces
+3. Deploy through GitHub Actions
+
+### AWS Deployment
+
+1. Push to ECR:
+```bash
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+docker build -t ai-dungeon .
+docker tag ai-dungeon:latest $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/ai-dungeon:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/ai-dungeon:latest
+```
+
+2. Deploy to ECS/EKS
+
+
+### Kubernetes Deployment
+
+```bash
+kubectl apply -f kubernetes/
+```
 
 
 This project showcases practical implementation of AI/ML in interactive entertainment, 
