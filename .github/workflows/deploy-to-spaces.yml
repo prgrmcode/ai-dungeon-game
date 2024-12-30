@@ -1,0 +1,15 @@
+name: Deploy to Spaces
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Deploy to Spaces
+        uses: huggingface/deploy-to-spaces@main
+        with:
+          space-id: "yourusername/ai-dungeon-game"
+          token: ${{ secrets.HF_TOKEN }}
