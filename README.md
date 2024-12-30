@@ -1,3 +1,15 @@
+---
+title: AI Dungeon Game
+emoji: 🎮
+colorFrom: indigo
+colorTo: purple
+sdk: gradio
+sdk_version: 3.50.2
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # AI-Powered Dungeon Adventure Game
 
 ## Table of Contents
