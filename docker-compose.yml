@@ -8,7 +8,10 @@ services:
     ports:
       - "7860:7860"
     environment:
+      # - PYTHONUNBUFFERED=1
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    secrets:
+      - hf_token
     deploy:
       resources:
         reservations:
