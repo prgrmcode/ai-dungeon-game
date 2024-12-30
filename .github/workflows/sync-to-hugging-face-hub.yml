@@ -14,7 +14,14 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+
+      - name: Login to Hugging Face
+        run: |
+          pip install --upgrade huggingface_hub
+          huggingface-cli login --token ${{ secrets.HUGGINGFACE_API_KEY }}
+   
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
         run: git push https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon main
