@@ -46,13 +46,15 @@ def get_huggingface_api_key():
 MODEL_CONFIG = {
     "main_model": {
         "name": "meta-llama/Llama-3.2-3B-Instruct",
-        "dtype": torch.bfloat16,
+        # "dtype": torch.bfloat16,
+        "dtype": torch.float32,  # Use float32 for CPU
         "max_length": 512,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     },
     "safety_model": {
         "name": "meta-llama/Llama-Guard-3-1B",
-        "dtype": torch.bfloat16,
+        # "dtype": torch.bfloat16,
+        "dtype": torch.float32,  # Use float32 for CPU
         "max_length": 256,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     },
