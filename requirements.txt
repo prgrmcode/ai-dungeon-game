@@ -43,7 +43,7 @@ Pygments==2.18.0
 pyparsing==3.2.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
-python-multipart==0.0.12
+python-multipart>=0.0.18
 pytz==2024.2
 PyYAML==6.0.2
 regex==2024.11.6
