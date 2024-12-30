@@ -74,7 +74,7 @@ def initialize_model_pipeline(model_name, force_cpu=False):
         # Use 8-bit quantization for memory efficiency
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            load_in_8bit=False if device == "cpu" else True,
+            load_in_8bit=False,
             torch_dtype=MODEL_CONFIG["main_model"]["dtype"],
             use_cache=True,
             device_map="auto",
@@ -85,7 +85,7 @@ def initialize_model_pipeline(model_name, force_cpu=False):
 
         model.config.use_cache = True
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
 
         # Initialize pipeline
         logger.info(f"Initializing pipeline with device: {device}")
