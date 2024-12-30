@@ -11,5 +11,5 @@ jobs:
       - name: Deploy to Spaces
         uses: huggingface/deploy-to-spaces@main
         with:
-          space-id: "yourusername/ai-dungeon-game"
+          space-id: "Prgrmmer/ai-dungeon"
           token: ${{ secrets.HF_TOKEN }}
