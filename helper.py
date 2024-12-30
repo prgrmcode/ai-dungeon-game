@@ -72,7 +72,7 @@ def initialize_model_pipeline(model_name, force_cpu=False):
         # Use 8-bit quantization for memory efficiency
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            load_in_8bit=True,
+            load_in_8bit=False if device == "cpu" else True,
             torch_dtype=MODEL_CONFIG["main_model"]["dtype"],
             use_cache=True,
             device_map="auto",
