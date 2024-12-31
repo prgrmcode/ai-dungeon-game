@@ -45,7 +45,8 @@ def get_huggingface_api_key():
 # Model configuration
 MODEL_CONFIG = {
     "main_model": {
-        "name": "meta-llama/Llama-3.2-3B-Instruct",
+        # "name": "meta-llama/Llama-3.2-3B-Instruct",
+        "name": "meta-llama/Llama-3.2-1B-Instruct",  # to fit in cpu on hugging face space
         # "dtype": torch.bfloat16,
         "dtype": torch.float32,  # Use float32 for CPU
         "max_length": 512,
