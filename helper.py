@@ -892,15 +892,18 @@ def init_safety_model(model_name, force_cpu=False):
         # model_id = "meta-llama/Llama-Guard-3-8B"
         # model_id = "meta-llama/Llama-Guard-3-1B"
 
+        api_key = get_huggingface_api_key()
+
         safety_model = AutoModelForCausalLM.from_pretrained(
             model_name,
+            token=api_key,
             torch_dtype=MODEL_CONFIG["safety_model"]["dtype"],
             use_cache=True,
             device_map="auto",
         )
         safety_model.config.use_cache = True
 
-        safety_tokenizer = AutoTokenizer.from_pretrained(model_name)
+        safety_tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
         # Set pad token explicitly
         safety_tokenizer.pad_token = safety_tokenizer.eos_token
 
