@@ -156,7 +156,8 @@ CRITICAL Rules:
 - Never use ellipsis (...)
 - Never include 'What would you like to do?' or similar prompts
 - Always finish with one real response
-- End the response with a period"""
+- Never use 'Your turn' or or anything like conversation starting prompts
+- Always end the response with a period"""
 
 
 def get_game_state(inventory: Dict = None) -> Dict[str, Any]:
@@ -457,13 +458,17 @@ def update_game_inventory(game_state: Dict, story_text: str) -> str:
 def extract_response_after_action(full_text: str, action: str) -> str:
     """Extract response text that comes after the user action line"""
     try:
+        if not full_text:  # Add null check
+            logger.error("Received empty response from model")
+            return "You look around carefully."
+
         # Split into lines
         lines = full_text.split("\n")
 
         # Find index of line containing user action
         action_line_index = -1
         for i, line in enumerate(lines):
-            if f"user: {action}" in line:
+            if action.lower() in line.lower():  # More flexible matching
                 action_line_index = i
                 break
 
@@ -475,14 +480,15 @@ def extract_response_after_action(full_text: str, action: str) -> str:
             # Clean up any remaining markers
             response = response.split("user:")[0].strip()
             response = response.split("system:")[0].strip()
+            response = response.split("assistant:")[0].strip()
 
-            return response
+            return response if response else "You look around carefully."
 
-        return ""
+        return "You look around carefully."  # Default response
 
     except Exception as e:
         logger.error(f"Error extracting response: {e}")
-        return ""
+        return "You look around carefully."
 
 
 def run_action(message: str, history: list, game_state: Dict) -> str:
@@ -490,15 +496,7 @@ def run_action(message: str, history: list, game_state: Dict) -> str:
     try:
         # Handle start game command
         if message.lower() == "start game":
-            # # Generate initial quest
-            # initial_quest = {
-            #     "title": "Investigate the Mist",
-            #     "description": "Strange mists have been gathering around Ravenhurst. Investigate their source.",
-            #     "exp_reward": 100,
-            #     "status": "active",
-            # }
-            # game_state["current_quest"] = initial_quest
-            # Initialize first quest
+
             initial_quest = generate_next_quest(game_state)
             game_state["current_quest"] = initial_quest
 
@@ -557,6 +555,7 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         # Convert messages to string format for pipeline
         prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
 
+        logger.info("Generating response...")
         # Generate response
         model_output = generator(
             prompt,
@@ -567,13 +566,28 @@ Inventory: {json.dumps(game_state['inventory'])}"""
             repetition_penalty=1.2,
             pad_token_id=tokenizer.eos_token_id,
         )
+        # logger.info(f"Raw model output: {model_output}")
+
+        # Check for None response
+        if not model_output or not isinstance(model_output, list):
+            logger.error(f"Invalid model output: {model_output}")
+            print(f"Invalid model output: {model_output}")
+            return "You look around carefully."
+
+        if not model_output[0] or not isinstance(model_output[0], dict):
+            logger.error(f"Invalid response format: {type(model_output[0])}")
+            return "You look around carefully."
 
         # Extract and clean response
         full_response = model_output[0]["generated_text"]
-        print(f"full_response in run_action: {full_response}")
+        if not full_response:
+            logger.error("Empty response from model")
+            return "You look around carefully."
+
+        print(f"Full response in run_action: {full_response}")
 
         response = extract_response_after_action(full_response, message)
-        print(f"response in run_action: {response}")
+        print(f"Extracted response in run_action: {response}")
 
         # Convert to second person
         response = response.replace("Elara", "You")
@@ -590,10 +604,10 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         response = response.rstrip("?").rstrip(".") + "."
         response = response.replace("...", ".")
 
-        # Perform safety check before returning
-        safe = is_safe(response)
-        print(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
-        logger.info(f"Safety check result: {'SAFE' if safe else 'UNSAFE'}")
+        # # Perform safety check before returning
+        # safe = is_safe(response)
+        # print(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
+        # logger.info(f"Safety check result: {'SAFE' if safe else 'UNSAFE'}")
 
         # if not safe:
         #     logging.warning("Unsafe content detected - blocking response")
@@ -666,20 +680,6 @@ def chat_response(message: str, chat_history: list, current_state: dict) -> tupl
         # Update chat history without status info
         chat_history = chat_history or []
         chat_history.append((message, output))
-
-        # # Create status text
-        # status_text = "Health: 100/100\nLevel: 1\nExp: 0/100"
-        # if current_state.get("player"):
-        #     status_text = (
-        #         f"Health: {current_state['player'].health}/{current_state['player'].max_health}\n"
-        #         f"Level: {current_state['player'].level}\n"
-        #         f"Exp: {current_state['player'].exp}/{current_state['player'].exp_to_level}"
-        #     )
-
-        # quest_text = "No active quest"
-        # if current_state.get("current_quest"):
-        #     quest = current_state["current_quest"]
-        #     quest_text = f"{quest['title']}\n{quest['description']}"
 
         # Update status displays
         status_text, quest_text = update_game_status(current_state)
