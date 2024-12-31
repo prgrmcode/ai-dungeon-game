@@ -595,35 +595,31 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         print(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
         logger.info(f"Safety check result: {'SAFE' if safe else 'UNSAFE'}")
 
-        if not safe:
-            logging.warning("Unsafe content detected - blocking response")
-            print("Unsafe content detected - Response blocked")
-            return "This response was blocked for safety reasons."
+        # if not safe:
+        #     logging.warning("Unsafe content detected - blocking response")
+        #     print("Unsafe content detected - Response blocked")
+        #     return "This response was blocked for safety reasons."
 
-        # # Add quest progress checks
-        # if game_state["current_quest"]:
-        #     quest = game_state["current_quest"]
-        #     # Check for quest completion keywords
-        #     if any(
-        #         word in message.lower() for word in ["investigate", "explore", "search"]
-        #     ):
-        #         if (
-        #             "mist" in message.lower()
-        #             and quest["title"] == "Investigate the Mist"
-        #         ):
-        #             game_state["player"].complete_quest(quest)
-        #             response += "\n\nQuest Complete: Investigate the Mist! (+100 exp)"
+        # if safe:
+        #     # Check for quest completion
+        #     quest_completed, quest_message = check_quest_completion(message, game_state)
+        #     if quest_completed:
+        #         response += quest_message
 
-        if safe:
-            # Check for quest completion
-            quest_completed, quest_message = check_quest_completion(message, game_state)
-            if quest_completed:
-                response += quest_message
+        #     # Check for item updates
+        #     inventory_update = update_game_inventory(game_state, response)
+        #     if inventory_update:
+        #         response += inventory_update
 
-            # Check for item updates
-            inventory_update = update_game_inventory(game_state, response)
-            if inventory_update:
-                response += inventory_update
+        # Check for quest completion
+        quest_completed, quest_message = check_quest_completion(message, game_state)
+        if quest_completed:
+            response += quest_message
+
+        # Check for item updates
+        inventory_update = update_game_inventory(game_state, response)
+        if inventory_update:
+            response += inventory_update
 
         # Validate response
         return response if response else "You look around carefully."
