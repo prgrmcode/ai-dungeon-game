@@ -5,6 +5,7 @@ import json
 import gradio as gr
 import torch  # first import torch then transformers
 
+from huggingface_hub import InferenceClient
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
@@ -42,11 +43,23 @@ def get_huggingface_api_key():
     return huggingface_api_key
 
 
+def get_huggingface_inference_key():
+    load_env()
+    huggingface_inference_key = os.getenv("HUGGINGFACE_INFERENCE_KEY")
+    if not huggingface_inference_key:
+        logging.error("HUGGINGFACE_API_KEY not found in environment variables")
+        raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
+    return huggingface_inference_key
+
+
 # Model configuration
 MODEL_CONFIG = {
     "main_model": {
         # "name": "meta-llama/Llama-3.2-3B-Instruct",
-        "name": "meta-llama/Llama-3.2-1B-Instruct",  # to fit in cpu on hugging face space
+        # "name": "meta-llama/Llama-3.2-1B-Instruct",  # to fit in cpu on hugging face space
+        "name": "meta-llama/Llama-3.2-1B",  # to fit in cpu on hugging face space
+        # "name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",  # to fit in cpu on hugging face space
+        # "name": "microsoft/phi-2",
         # "dtype": torch.bfloat16,
         "dtype": torch.float32,  # Use float32 for CPU
         "max_length": 512,
@@ -110,29 +123,42 @@ def initialize_model_pipeline(model_name, force_cpu=False):
         raise
 
 
-# Initialize model pipeline
-try:
-    # Use a smaller model for testing
-    # model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
-    # model_name = "google/gemma-2-2b"  # Start with a smaller model
-    # model_name = "microsoft/phi-2"
-    # model_name = "meta-llama/Llama-3.2-1B-Instruct"
-    # model_name = "meta-llama/Llama-3.2-3B-Instruct"
-
-    model_name = MODEL_CONFIG["main_model"]["name"]
-
-    # Initialize the pipeline with memory management
-    generator, tokenizer = initialize_model_pipeline(model_name)
-
-except Exception as e:
-    logger.error(f"Failed to initialize model: {str(e)}")
-    # Fallback to CPU if GPU initialization fails
+def initialize_inference_client():
+    """Initialize HuggingFace Inference Client"""
     try:
-        logger.info("Attempting CPU fallback...")
-        generator, tokenizer = initialize_model_pipeline(model_name, force_cpu=True)
+        inference_key = get_huggingface_inference_key()
+
+        client = InferenceClient(api_key=inference_key)
+        logger.info("Inference Client initialized successfully")
+        return client
     except Exception as e:
-        logger.error(f"CPU fallback failed: {str(e)}")
+        logger.error(f"Failed to initialize Inference Client: {e}")
         raise
+
+
+# # Initialize model pipeline
+# try:
+#     # Use a smaller model for testing
+#     # model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+#     # model_name = "google/gemma-2-2b"  # Start with a smaller model
+#     # model_name = "microsoft/phi-2"
+#     # model_name = "meta-llama/Llama-3.2-1B-Instruct"
+#     # model_name = "meta-llama/Llama-3.2-3B-Instruct"
+
+#     model_name = MODEL_CONFIG["main_model"]["name"]
+
+#     # Initialize the pipeline with memory management
+#     generator, tokenizer = initialize_model_pipeline(model_name)
+
+# except Exception as e:
+#     logger.error(f"Failed to initialize model: {str(e)}")
+#     # Fallback to CPU if GPU initialization fails
+#     try:
+#         logger.info("Attempting CPU fallback...")
+#         generator, tokenizer = initialize_model_pipeline(model_name, force_cpu=True)
+#     except Exception as e:
+#         logger.error(f"CPU fallback failed: {str(e)}")
+#         raise
 
 
 def load_world(filename):
@@ -494,11 +520,11 @@ def extract_response_after_action(full_text: str, action: str) -> str:
 def run_action(message: str, history: list, game_state: Dict) -> str:
     """Process game actions and generate responses with quest handling"""
     try:
+        initial_quest = generate_next_quest(game_state)
+        game_state["current_quest"] = initial_quest
+
         # Handle start game command
         if message.lower() == "start game":
-
-            initial_quest = generate_next_quest(game_state)
-            game_state["current_quest"] = initial_quest
 
             start_response = f"""Welcome to {game_state['name']}. {game_state['world']}
 
@@ -538,71 +564,105 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         # - Describe immediate surroundings and sensations
         # - Keep responses focused on the player's direct experience"""
 
+        # messages = [
+        #     {"role": "system", "content": system_prompt},
+        #     {"role": "user", "content": world_info},
+        # ]
+
+        # Properly formatted messages for API
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": world_info},
+            {
+                "role": "assistant",
+                "content": "I understand the game world and will help guide your adventure.",
+            },
+            {"role": "user", "content": message},
         ]
 
-        # Format chat history
-        if history:
-            for h in history:
-                if isinstance(h, tuple):
-                    messages.append({"role": "assistant", "content": h[0]})
-                    messages.append({"role": "user", "content": h[1]})
+        # # Format chat history
+        # if history:
+        #     for h in history:
+        #         if isinstance(h, tuple):
+        #             messages.append({"role": "assistant", "content": h[0]})
+        #             messages.append({"role": "user", "content": h[1]})
 
-        messages.append({"role": "user", "content": message})
+        # Add history in correct alternating format
+        if history:
+            for h in history[-3:]:  # Last 3 exchanges
+                if isinstance(h, tuple):
+                    messages.append({"role": "user", "content": h[0]})
+                    messages.append({"role": "assistant", "content": h[1]})
+
+        # messages.append({"role": "user", "content": message})
 
         # Convert messages to string format for pipeline
         prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
 
         logger.info("Generating response...")
-        # Generate response
-        model_output = generator(
-            prompt,
-            max_new_tokens=len(tokenizer.encode(message))
-            + 120,  # Set max_new_tokens based on input length
-            num_return_sequences=1,
-            # temperature=0.7,  # More creative but still focused
-            repetition_penalty=1.2,
-            pad_token_id=tokenizer.eos_token_id,
+        ## Generate response
+        # model_output = generator(
+        #     prompt,
+        #     max_new_tokens=len(tokenizer.encode(message))
+        #     + 120,  # Set max_new_tokens based on input length
+        #     num_return_sequences=1,
+        #     # temperature=0.7,  # More creative but still focused
+        #     repetition_penalty=1.2,
+        #     pad_token_id=tokenizer.eos_token_id,
+        # )
+
+        # # Check for None response
+        # if not model_output or not isinstance(model_output, list):
+        #     logger.error(f"Invalid model output: {model_output}")
+        #     print(f"Invalid model output: {model_output}")
+        #     return "You look around carefully."
+
+        # if not model_output[0] or not isinstance(model_output[0], dict):
+        #     logger.error(f"Invalid response format: {type(model_output[0])}")
+        #     return "You look around carefully."
+
+        # # Extract and clean response
+        # full_response = model_output[0]["generated_text"]
+        # if not full_response:
+        #     logger.error("Empty response from model")
+        #     return "You look around carefully."
+
+        # print(f"Full response in run_action: {full_response}")
+
+        # response = extract_response_after_action(full_response, message)
+        # print(f"Extracted response in run_action: {response}")
+
+        # # Convert to second person
+        # response = response.replace("Elara", "You")
+
+        # # # Format response
+        # # if not response.startswith("You"):
+        # #     response = "You see " + response
+
+        # # Validate no cut-off sentences
+        # if response.rstrip().endswith(("you also", "meanwhile", "suddenly", "...")):
+        #     response = response.rsplit(" ", 1)[0]  # Remove last word
+
+        # # Ensure proper formatting
+        # response = response.rstrip("?").rstrip(".") + "."
+        # response = response.replace("...", ".")
+
+        # Initialize client and make API call
+        client = initialize_inference_client()
+
+        # Generate response using Inference API
+        completion = client.chat.completions.create(
+            model="mistralai/Mistral-7B-Instruct-v0.3",  # Use inference API model
+            messages=messages,
+            max_tokens=520,
         )
-        # logger.info(f"Raw model output: {model_output}")
 
-        # Check for None response
-        if not model_output or not isinstance(model_output, list):
-            logger.error(f"Invalid model output: {model_output}")
-            print(f"Invalid model output: {model_output}")
+        response = completion.choices[0].message.content
+
+        print(f"Generated response Inference API: {response}")
+
+        if not response:
             return "You look around carefully."
-
-        if not model_output[0] or not isinstance(model_output[0], dict):
-            logger.error(f"Invalid response format: {type(model_output[0])}")
-            return "You look around carefully."
-
-        # Extract and clean response
-        full_response = model_output[0]["generated_text"]
-        if not full_response:
-            logger.error("Empty response from model")
-            return "You look around carefully."
-
-        print(f"Full response in run_action: {full_response}")
-
-        response = extract_response_after_action(full_response, message)
-        print(f"Extracted response in run_action: {response}")
-
-        # Convert to second person
-        response = response.replace("Elara", "You")
-
-        # # Format response
-        # if not response.startswith("You"):
-        #     response = "You see " + response
-
-        # Validate no cut-off sentences
-        if response.rstrip().endswith(("you also", "meanwhile", "suddenly", "...")):
-            response = response.rsplit(" ", 1)[0]  # Remove last word
-
-        # Ensure proper formatting
-        response = response.rstrip("?").rstrip(".") + "."
-        response = response.replace("...", ".")
 
         # # Perform safety check before returning
         # safe = is_safe(response)
@@ -635,6 +695,7 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         if inventory_update:
             response += inventory_update
 
+        print(f"Final response in run_action: {response}")
         # Validate response
         return response if response else "You look around carefully."
 
