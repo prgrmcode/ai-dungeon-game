@@ -7,7 +7,7 @@ sdk: gradio
 sdk_version: 5.9.1
 app_file: main.py
 pinned: false
-license: -
+license: 
 ---
 
 # AI-Powered Dungeon Adventure Game
