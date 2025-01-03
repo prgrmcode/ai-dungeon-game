@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 # Add build argument
 # ARG HUGGINGFACE_API_KEY
-ENV HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+# ENV HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
