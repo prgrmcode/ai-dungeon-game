@@ -108,7 +108,12 @@ HUGGINGFACE_API_KEY=your_api_key_here
 
 ## Usage
 ```bash
-# Start the game
+# Run the game locally using gpu-compute branch
+git checkout gpu-compute
+python main.py
+
+# Start the game using deployed main branch
+git checkout main
 python main.py
 
 # Access via web browser
