@@ -4,8 +4,10 @@ from dotenv import load_dotenv, find_dotenv
 import json
 import gradio as gr
 import torch  # first import torch then transformers
-
+from torch.nn.functional import softmax
+from transformers import AutoModelForSequenceClassification
 from huggingface_hub import InferenceClient
+
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
@@ -71,70 +73,186 @@ MODEL_CONFIG = {
         "dtype": torch.float32,  # Use float32 for CPU
         "max_length": 256,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "max_tokens": 500,
     },
 }
 
+PROMPT_GUARD_CONFIG = {
+    "model_id": "meta-llama/Prompt-Guard-86M",
+    "temperature": 1.0,
+    "jailbreak_threshold": 0.5,
+    "injection_threshold": 0.9,
+    "device": "cpu",
+    "safe_commands": [
+        "look around",
+        "investigate",
+        "explore",
+        "search",
+        "examine",
+        "take",
+        "use",
+        "go",
+        "walk",
+        "continue",
+        "help",
+        "inventory",
+        "quest",
+        "status",
+        "map",
+        "talk",
+        "fight",
+        "run",
+        "hide",
+    ],
+    "max_length": 512,
+}
 
-def initialize_model_pipeline(model_name, force_cpu=False):
-    """Initialize pipeline with memory management"""
+
+def initialize_prompt_guard():
+    """Initialize Prompt Guard model"""
     try:
-        if force_cpu:
-            device = -1
-        else:
-            device = MODEL_CONFIG["main_model"]["device"]
+        tokenizer = AutoTokenizer.from_pretrained(PROMPT_GUARD_CONFIG["model_id"])
+        model = AutoModelForSequenceClassification.from_pretrained(
+            PROMPT_GUARD_CONFIG["model_id"]
+        )
+        return model, tokenizer
+    except Exception as e:
+        logger.error(f"Failed to initialize Prompt Guard: {e}")
+        raise
 
-        api_key = get_huggingface_api_key()
 
-        # Use 8-bit quantization for memory efficiency
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            load_in_8bit=False,
-            torch_dtype=MODEL_CONFIG["main_model"]["dtype"],
-            use_cache=True,
-            device_map="auto",
-            low_cpu_mem_usage=True,
-            trust_remote_code=True,
-            token=api_key,  # Add token here
+def get_class_probabilities(text: str, guard_model, guard_tokenizer) -> torch.Tensor:
+    """Evaluate model probabilities with temperature scaling"""
+    try:
+        inputs = guard_tokenizer(
+            text,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=PROMPT_GUARD_CONFIG["max_length"],
+        ).to(PROMPT_GUARD_CONFIG["device"])
+
+        with torch.no_grad():
+            logits = guard_model(**inputs).logits
+
+        scaled_logits = logits / PROMPT_GUARD_CONFIG["temperature"]
+        return softmax(scaled_logits, dim=-1)
+
+    except Exception as e:
+        logger.error(f"Error getting class probabilities: {e}")
+        return None
+
+
+def get_jailbreak_score(text: str, guard_model, guard_tokenizer) -> float:
+    """Get jailbreak probability score"""
+    try:
+        probabilities = get_class_probabilities(text, guard_model, guard_tokenizer)
+        if probabilities is None:
+            return 1.0  # Fail safe
+        return probabilities[0, 2].item()
+    except Exception as e:
+        logger.error(f"Error getting jailbreak score: {e}")
+        return 1.0
+
+
+def get_injection_score(text: str, guard_model, guard_tokenizer) -> float:
+    """Get injection probability score"""
+    try:
+        probabilities = get_class_probabilities(text, guard_model, guard_tokenizer)
+        if probabilities is None:
+            return 1.0  # Fail safe
+        return (probabilities[0, 1] + probabilities[0, 2]).item()
+    except Exception as e:
+        logger.error(f"Error getting injection score: {e}")
+        return 1.0
+
+
+# Initialize safety model pipeline
+try:
+    # Initialize Prompt Guard
+    guard_model, guard_tokenizer = initialize_prompt_guard()
+
+except Exception as e:
+    logger.error(f"Failed to initialize model: {str(e)}")
+
+
+def is_prompt_safe(message: str) -> bool:
+    """Enhanced safety check with Prompt Guard"""
+    try:
+        # Allow safe game commands
+        if any(cmd in message.lower() for cmd in PROMPT_GUARD_CONFIG["safe_commands"]):
+            logger.info("Message matched safe command pattern")
+            return True
+
+        # Get safety scores
+        jailbreak_score = get_jailbreak_score(message, guard_model, guard_tokenizer)
+        injection_score = get_injection_score(message, guard_model, guard_tokenizer)
+
+        logger.info(
+            f"Safety scores - Jailbreak: {jailbreak_score}, Injection: {injection_score}"
         )
 
-        model.config.use_cache = True
-
-        tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
-
-        # Initialize pipeline
-        logger.info(f"Initializing pipeline with device: {device}")
-        generator = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            # device=device,
-            # temperature=0.7,
-            model_kwargs={"low_cpu_mem_usage": True},
+        # Check against thresholds
+        is_safe = (
+            jailbreak_score
+            < PROMPT_GUARD_CONFIG["jailbreak_threshold"]
+            # and injection_score < PROMPT_GUARD_CONFIG["injection_threshold"] # Disable for now because injection is too strict and current prompt guard model seems malfunctioning for now.
         )
 
-        logger.info("Model Pipeline initialized successfully")
-        return generator, tokenizer
+        logger.info(f"Final safety result: {is_safe}")
+        return is_safe
 
-    except ImportError as e:
-        logger.error(f"Missing required package: {str(e)}")
-        raise
     except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {str(e)}")
-        raise
+        logger.error(f"Safety check failed: {e}")
+        return False
 
 
-def initialize_inference_client():
-    """Initialize HuggingFace Inference Client"""
-    try:
-        inference_key = get_huggingface_inference_key()
+# def initialize_model_pipeline(model_name, force_cpu=False):
+#     """Initialize pipeline with memory management"""
+#     try:
+#         if force_cpu:
+#             device = -1
+#         else:
+#             device = MODEL_CONFIG["main_model"]["device"]
 
-        client = InferenceClient(api_key=inference_key)
-        logger.info("Inference Client initialized successfully")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to initialize Inference Client: {e}")
-        raise
+#         api_key = get_huggingface_api_key()
 
+#         # Use 8-bit quantization for memory efficiency
+#         model = AutoModelForCausalLM.from_pretrained(
+#             model_name,
+#             load_in_8bit=False,
+#             torch_dtype=MODEL_CONFIG["main_model"]["dtype"],
+#             use_cache=True,
+#             device_map="auto",
+#             low_cpu_mem_usage=True,
+#             trust_remote_code=True,
+#             token=api_key,  # Add token here
+#         )
+
+#         model.config.use_cache = True
+
+#         tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
+
+#         # Initialize pipeline
+#         logger.info(f"Initializing pipeline with device: {device}")
+#         generator = pipeline(
+#             "text-generation",
+#             model=model,
+#             tokenizer=tokenizer,
+#             # device=device,
+#             # temperature=0.7,
+#             model_kwargs={"low_cpu_mem_usage": True},
+#         )
+
+#         logger.info("Model Pipeline initialized successfully")
+#         return generator, tokenizer
+
+#     except ImportError as e:
+#         logger.error(f"Missing required package: {str(e)}")
+#         raise
+#     except Exception as e:
+#         logger.error(f"Failed to initialize pipeline: {str(e)}")
+#         raise
 
 # # Initialize model pipeline
 # try:
@@ -161,17 +279,30 @@ def initialize_inference_client():
 #         raise
 
 
+def initialize_inference_client():
+    """Initialize HuggingFace Inference Client"""
+    try:
+        inference_key = get_huggingface_inference_key()
+
+        client = InferenceClient(api_key=inference_key)
+        logger.info("Inference Client initialized successfully")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to initialize Inference Client: {e}")
+        raise
+
+
 def load_world(filename):
     with open(filename, "r") as f:
         return json.load(f)
 
 
 # Define system_prompt and model
-system_prompt = """You are an AI Game Master. Write ONE response describing what the player sees/experiences.
+system_prompt = """You are an AI Game master. Your job is to write what happens next in a player's adventure game.
 CRITICAL Rules:
 - Write EXACTLY 3 sentences maximum
 - Use daily English language
-- Start with "You see", "You hear", or "You feel"
+- Start with "You "
 - Don't use 'Elara' or 'she/he', only use 'you'
 - Use only second person ("you")
 - Never include dialogue after the response
@@ -183,7 +314,7 @@ CRITICAL Rules:
 - Never include 'What would you like to do?' or similar prompts
 - Always finish with one real response
 - Never use 'Your turn' or or anything like conversation starting prompts
-- Always end the response with a period"""
+- Always end the response with a period(.)"""
 
 
 def get_game_state(inventory: Dict = None) -> Dict[str, Any]:
@@ -435,39 +566,59 @@ New Quest: {next_quest['title']}
 
 
 def parse_items_from_story(text: str) -> Dict[str, int]:
-    """Extract item changes from story text"""
+    """Extract item changes from story text with improved pattern matching"""
     items = {}
 
+    # Skip parsing if text starts with common narrative phrases
+    skip_patterns = [
+        "you see",
+        "you find yourself",
+        "you are",
+        "you stand",
+        "you hear",
+        "you feel",
+    ]
+    if any(text.lower().startswith(pattern) for pattern in skip_patterns):
+        return items
+
     # Common item keywords and patterns
-    gold_pattern = r"(\d+)\s*gold"
-    items_pattern = (
-        r"(?:receive|find|given|hand|containing)\s+(?:a|an|the)?\s*(\d+)?\s*([\w\s]+)"
-    )
+    gold_pattern = r"(\d+)\s*gold(?:\s+coins?)?"
+    items_pattern = r"(?:receive|find|given|obtain|pick up|grab)\s+(?:a|an|the)?\s*(\d+)?\s*([\w\s]+?)"
 
-    # Find gold amounts
-    gold_matches = re.findall(gold_pattern, text.lower())
-    if gold_matches:
-        items["gold"] = sum(int(x) for x in gold_matches)
+    try:
+        # Find gold amounts
+        gold_matches = re.findall(gold_pattern, text.lower())
+        if gold_matches:
+            items["gold"] = sum(int(x) for x in gold_matches)
 
-    # Find other items
-    item_matches = re.findall(items_pattern, text.lower())
-    for count, item in item_matches:
-        count = int(count) if count else 1
-        item = item.strip()
-        if item in items:
-            items[item] += count
-        else:
-            items[item] = count
+        # Find other items
+        item_matches = re.findall(items_pattern, text.lower())
+        for count, item in item_matches:
+            # Validate item name
+            item = item.strip()
+            if len(item) > 2 and not any(  # Minimum length check
+                skip in item for skip in ["yourself", "you", "door", "wall", "floor"]
+            ):  # Skip common words
+                count = int(count) if count else 1
+                if item in items:
+                    items[item] += count
+                else:
+                    items[item] = count
 
-    return items
+        return items
+
+    except Exception as e:
+        logger.error(f"Error parsing items from story: {e}")
+        return {}
 
 
-def update_game_inventory(game_state: Dict, story_text: str) -> str:
-    """Update inventory based on story and return update message"""
+def update_game_inventory(game_state: Dict, story_text: str) -> Tuple[str, list]:
+    """Update inventory and return message and updated inventory data"""
     try:
         items = parse_items_from_story(story_text)
         update_msg = ""
 
+        # Update inventory
         for item, count in items.items():
             if item in game_state["inventory"]:
                 game_state["inventory"][item] += count
@@ -475,10 +626,15 @@ def update_game_inventory(game_state: Dict, story_text: str) -> str:
                 game_state["inventory"][item] = count
             update_msg += f"\nReceived: {count} {item}"
 
-        return update_msg
+        # Create updated inventory data for display
+        inventory_data = [
+            [item, count] for item, count in game_state["inventory"].items()
+        ]
+
+        return update_msg, inventory_data
     except Exception as e:
         logger.error(f"Error updating inventory: {e}")
-        return ""
+        return "", []
 
 
 def extract_response_after_action(full_text: str, action: str) -> str:
@@ -530,8 +686,10 @@ def run_action(message: str, history: list, game_state: Dict) -> str:
 
 {game_state['start']}
 
-Currently in {game_state['town_name']}, in the kingdom of {game_state['kingdom']}.
-{game_state['town']}
+You are currently in {game_state['town_name']}, {game_state['town']}.
+
+{game_state['town_name']} is a city in {game_state['kingdom']}.
+
 
 
 Current Quest: {initial_quest['title']}
@@ -544,6 +702,11 @@ What would you like to do?"""
         if not isinstance(game_state, dict):
             logger.error(f"Invalid game state type: {type(game_state)}")
             return "Error: Invalid game state"
+
+        # Safety check with Prompt Guard
+        if not is_prompt_safe(message):
+            logger.warning("Unsafe content detected in user prompt")
+            return "I cannot process that request for safety reasons."
 
         # logger.info(f"Processing action with game state: {game_state}")
         logger.info(f"Processing action with game state")
@@ -589,7 +752,8 @@ Inventory: {json.dumps(game_state['inventory'])}"""
 
         # Add history in correct alternating format
         if history:
-            for h in history[-3:]:  # Last 3 exchanges
+            # for h in history[-3:]:  # Last 3 exchanges
+            for h in history:
                 if isinstance(h, tuple):
                     messages.append({"role": "user", "content": h[0]})
                     messages.append({"role": "assistant", "content": h[1]})
@@ -664,6 +828,11 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         if not response:
             return "You look around carefully."
 
+        # Safety check the responce using inference API
+        if not is_safe(response):
+            logger.warning("Unsafe content detected - blocking response")
+            return "This response was blocked for safety reasons."
+
         # # Perform safety check before returning
         # safe = is_safe(response)
         # print(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
@@ -690,8 +859,8 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         if quest_completed:
             response += quest_message
 
-        # Check for item updates
-        inventory_update = update_game_inventory(game_state, response)
+        # Check for item-inventory updates
+        inventory_update, inventory_data = update_game_inventory(game_state, response)
         if inventory_update:
             response += inventory_update
 
@@ -733,7 +902,7 @@ def chat_response(message: str, chat_history: list, current_state: dict) -> tupl
     """Process chat input and return response with updates"""
     try:
         if not message.strip():
-            return chat_history, current_state, "", ""
+            return chat_history, current_state, "", "", []  # Add empty inventory data
 
         # Get AI response
         output = run_action(message, chat_history, current_state)
@@ -745,12 +914,17 @@ def chat_response(message: str, chat_history: list, current_state: dict) -> tupl
         # Update status displays
         status_text, quest_text = update_game_status(current_state)
 
+        # Get inventory updates
+        update_msg, inventory_data = update_game_inventory(current_state, output)
+        if update_msg:
+            output += update_msg
+
         # Return tuple includes empty string to clear input
-        return chat_history, current_state, status_text, quest_text
+        return chat_history, current_state, status_text, quest_text, inventory_data
 
     except Exception as e:
         logger.error(f"Error in chat response: {e}")
-        return chat_history, current_state, "", ""
+        return chat_history, current_state, "", "", []
 
 
 def start_game(main_loop, game_state, share=False):
@@ -888,22 +1062,26 @@ def start_game(main_loop, game_state, share=False):
 
         def submit_action(message, history, state):
             # Process response
-            new_history, new_state, status_text, quest_text = chat_response(
-                message, history, state
+            new_history, new_state, status_text, quest_text, inventory_data = (
+                chat_response(message, history, state)
             )
+
+            # Update inventory display
+            inventory.value = inventory_data
+
             # Clear input
-            return "", new_history, new_state, status_text, quest_text
+            return "", new_history, new_state, status_text, quest_text, inventory
 
         submit_btn.click(
             submit_action,
             inputs=[txt, chatbot, state],
-            outputs=[txt, chatbot, state, status, quest_display],
+            outputs=[txt, chatbot, state, status, quest_display, inventory],
         )
 
         txt.submit(
             submit_action,
             inputs=[txt, chatbot, state],
-            outputs=[txt, chatbot, state, status, quest_display],
+            outputs=[txt, chatbot, state, status, quest_display, inventory],
         )
 
         demo.launch(share=share)
@@ -939,159 +1117,212 @@ Should not
 }
 
 
-def init_safety_model(model_name, force_cpu=False):
-    """Initialize safety checking model with optimized memory usage"""
+def initialize_safety_client():
+    """Initialize HuggingFace Inference Client"""
     try:
-        if force_cpu:
-            device = -1
-        else:
-            device = MODEL_CONFIG["safety_model"]["device"]
-
-        # model_id = "meta-llama/Llama-Guard-3-8B"
-        # model_id = "meta-llama/Llama-Guard-3-1B"
-
-        api_key = get_huggingface_api_key()
-
-        safety_model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            token=api_key,
-            torch_dtype=MODEL_CONFIG["safety_model"]["dtype"],
-            use_cache=True,
-            device_map="auto",
-        )
-        safety_model.config.use_cache = True
-
-        safety_tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
-        # Set pad token explicitly
-        safety_tokenizer.pad_token = safety_tokenizer.eos_token
-
-        logger.info(f"Safety model initialized successfully on {device}")
-        return safety_model, safety_tokenizer
-
+        inference_key = get_huggingface_inference_key()
+        # api_key = get_huggingface_api_key()
+        return InferenceClient(api_key=inference_key)
     except Exception as e:
-        logger.error(f"Failed to initialize safety model: {e}")
+        logger.error(f"Failed to initialize safety client: {e}")
         raise
-
-
-# Initialize safety model pipeline
-try:
-    safety_model_name = MODEL_CONFIG["safety_model"]["name"]
-
-    api_key = get_huggingface_api_key()
-
-    # Initialize the pipeline with memory management
-    safety_model, safety_tokenizer = init_safety_model(safety_model_name)
-
-except Exception as e:
-    logger.error(f"Failed to initialize model: {str(e)}")
-    # Fallback to CPU if GPU initialization fails
-    try:
-        logger.info("Attempting CPU fallback...")
-        safety_model, safety_tokenizer = init_safety_model(
-            safety_model_name, force_cpu=True
-        )
-    except Exception as e:
-        logger.error(f"CPU fallback failed: {str(e)}")
-        raise
-
-
-@lru_cache(maxsize=1000)
-def get_safety_response(prompt: str) -> str:
-    """Cached safety check responses"""
-    with torch.no_grad():
-        inputs = safety_tokenizer(
-            prompt,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=MODEL_CONFIG["safety_model"]["max_length"],
-        ).to(safety_model.device)
-
-        output = safety_model.generate(
-            **inputs,
-            max_new_tokens=5,
-            temperature=0.1,  # Lower temperature for more consistent output
-            pad_token_id=safety_tokenizer.pad_token_id,
-            eos_token_id=safety_tokenizer.eos_token_id,
-        )
-
-        return safety_tokenizer.decode(output[0], skip_special_tokens=True)
 
 
 def is_safe(message: str) -> bool:
-    """Check if message content is safe"""
+    """Check content safety using Inference API"""
     try:
-        logger.info("Performing safety check...")
-        # Build the prompt with embedded values
-        # prompt = f"""[INST] Task: Check if this content is safe according to our safety policy with the below categories.
+        client = initialize_safety_client()
 
-        # <BEGIN UNSAFE CONTENT CATEGORIES>
-        # {everyone_content_policy['policy']}
-        # <END UNSAFE CONTENT CATEGORIES>
+        messages = [
+            {"role": "user", "content": f"Check if this content is safe:\n{message}"},
+            {
+                "role": "assistant",
+                "content": f"I will check if the content is safe based on this content policy:\n{everyone_content_policy['policy']}",
+            },
+            {"role": "user", "content": "Is it safe or unsafe?"},
+        ]
 
-        # <CONTENT TO CHECK>
-        # {message}
-        # <END CONTENT TO CHECK>
+        try:
+            completion = client.chat.completions.create(
+                model=MODEL_CONFIG["safety_model"]["name"],
+                messages=messages,
+                max_tokens=MODEL_CONFIG["safety_model"]["max_tokens"],
+                temperature=0.1,
+            )
 
-        # Provide your safety assessment for user in the above CONTENT TO CHECK section:
-        # - Reply ONLY with single word 'safe' or 'unsafe' [/INST]
-        # """
+            response = completion.choices[0].message.content.lower()
+            logger.info(f"Safety check response: {response}")
 
-        prompt = f"""[INST]Check if safe:
-{message}
-Reply 'safe' or 'unsafe'[/INST]
-"""
+            is_safe = "safe" in response and "unsafe" not in response
 
-        # Generate safety check on cuda
+            logger.info(f"Safety check result: {'SAFE' if is_safe else 'UNSAFE'}")
+            return is_safe
 
-        # with torch.no_grad():
-        #     inputs = safety_tokenizer(
-        #         prompt,
-        #         return_tensors="pt",
-        #         padding=True,
-        #         truncation=True,
-        #     )
-
-        #     # Move inputs to correct device
-        #     inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        #     output = safety_model.generate(
-        #         **inputs,
-        #         max_new_tokens=10,
-        #         temperature=0.1,  # Lower temperature for more consistent output
-        #         pad_token_id=safety_tokenizer.pad_token_id,  # Use configured pad token
-        #         eos_token_id=safety_tokenizer.eos_token_id,
-        #         do_sample=False,
-        #     )
-
-        # result = safety_tokenizer.decode(output[0], skip_special_tokens=True)
-        result = get_safety_response(prompt)
-        print(f"Raw safety check result: {result}")
-
-        # # Extract response after prompt
-        # if "[/INST]" in result:
-        #     result = result.split("[/INST]")[-1]
-
-        # # Clean response
-        # result = result.lower().strip()
-        # print(f"Cleaned safety check result: {result}")
-        # words = [word for word in result.split() if word in ["safe", "unsafe"]]
-
-        # # Take first valid response word
-        # is_safe = words[0] == "safe" if words else False
-
-        # print("Final Safety check result:", is_safe)
-
-        is_safe = "safe" in result.lower().split()
-
-        logger.info(
-            f"Safety check completed - Result: {'SAFE' if is_safe else 'UNSAFE'}"
-        )
-        return is_safe
+        except Exception as api_error:
+            logger.error(f"API error: {api_error}")
+            # Fallback to allow common game commands
+            return any(
+                cmd in message.lower() for cmd in PROMPT_GUARD_CONFIG["safe_commands"]
+            )
 
     except Exception as e:
         logger.error(f"Safety check failed: {e}")
         return False
+
+
+# def init_safety_model(model_name, force_cpu=False):
+#     """Initialize safety checking model with optimized memory usage"""
+#     try:
+#         if force_cpu:
+#             device = -1
+#         else:
+#             device = MODEL_CONFIG["safety_model"]["device"]
+
+#         # model_id = "meta-llama/Llama-Guard-3-8B"
+#         # model_id = "meta-llama/Llama-Guard-3-1B"
+
+#         api_key = get_huggingface_api_key()
+
+#         safety_model = AutoModelForCausalLM.from_pretrained(
+#             model_name,
+#             token=api_key,
+#             torch_dtype=MODEL_CONFIG["safety_model"]["dtype"],
+#             use_cache=True,
+#             device_map="auto",
+#         )
+#         safety_model.config.use_cache = True
+
+#         safety_tokenizer = AutoTokenizer.from_pretrained(model_name, token=api_key)
+#         # Set pad token explicitly
+#         safety_tokenizer.pad_token = safety_tokenizer.eos_token
+
+#         logger.info(f"Safety model initialized successfully on {device}")
+#         return safety_model, safety_tokenizer
+
+#     except Exception as e:
+#         logger.error(f"Failed to initialize safety model: {e}")
+#         raise
+
+
+# # Initialize safety model pipeline
+# try:
+#     safety_model_name = MODEL_CONFIG["safety_model"]["name"]
+
+#     api_key = get_huggingface_api_key()
+
+#     # Initialize the pipeline with memory management
+#     safety_model, safety_tokenizer = init_safety_model(safety_model_name)
+
+# except Exception as e:
+#     logger.error(f"Failed to initialize model: {str(e)}")
+#     # Fallback to CPU if GPU initialization fails
+#     try:
+#         logger.info("Attempting CPU fallback...")
+#         safety_model, safety_tokenizer = init_safety_model(
+#             safety_model_name, force_cpu=True
+#         )
+#     except Exception as e:
+#         logger.error(f"CPU fallback failed: {str(e)}")
+#         raise
+
+
+# @lru_cache(maxsize=1000)
+# def get_safety_response(prompt: str) -> str:
+#     """Cached safety check responses"""
+#     with torch.no_grad():
+#         inputs = safety_tokenizer(
+#             prompt,
+#             return_tensors="pt",
+#             padding=True,
+#             truncation=True,
+#             max_length=MODEL_CONFIG["safety_model"]["max_length"],
+#         ).to(safety_model.device)
+
+#         output = safety_model.generate(
+#             **inputs,
+#             max_new_tokens=5,
+#             temperature=0.1,  # Lower temperature for more consistent output
+#             pad_token_id=safety_tokenizer.pad_token_id,
+#             eos_token_id=safety_tokenizer.eos_token_id,
+#         )
+
+#         return safety_tokenizer.decode(output[0], skip_special_tokens=True)
+
+
+# def is_safe(message: str) -> bool:
+#     """Check if message content is safe"""
+#     try:
+#         logger.info("Performing safety check...")
+#         # Build the prompt with embedded values
+#         # prompt = f"""[INST] Task: Check if this content is safe according to our safety policy with the below categories.
+
+#         # <BEGIN UNSAFE CONTENT CATEGORIES>
+#         # {everyone_content_policy['policy']}
+#         # <END UNSAFE CONTENT CATEGORIES>
+
+#         # <CONTENT TO CHECK>
+#         # {message}
+#         # <END CONTENT TO CHECK>
+
+#         # Provide your safety assessment for user in the above CONTENT TO CHECK section:
+#         # - Reply ONLY with single word 'safe' or 'unsafe' [/INST]
+#         # """
+
+#         prompt = f"""[INST]Check if safe:
+# {message}
+# Reply 'safe' or 'unsafe'[/INST]
+# """
+
+#         # Generate safety check on cuda
+
+#         # with torch.no_grad():
+#         #     inputs = safety_tokenizer(
+#         #         prompt,
+#         #         return_tensors="pt",
+#         #         padding=True,
+#         #         truncation=True,
+#         #     )
+
+#         #     # Move inputs to correct device
+#         #     inputs = {k: v.to(device) for k, v in inputs.items()}
+
+#         #     output = safety_model.generate(
+#         #         **inputs,
+#         #         max_new_tokens=10,
+#         #         temperature=0.1,  # Lower temperature for more consistent output
+#         #         pad_token_id=safety_tokenizer.pad_token_id,  # Use configured pad token
+#         #         eos_token_id=safety_tokenizer.eos_token_id,
+#         #         do_sample=False,
+#         #     )
+
+#         # result = safety_tokenizer.decode(output[0], skip_special_tokens=True)
+#         result = get_safety_response(prompt)
+#         print(f"Raw safety check result: {result}")
+
+#         # # Extract response after prompt
+#         # if "[/INST]" in result:
+#         #     result = result.split("[/INST]")[-1]
+
+#         # # Clean response
+#         # result = result.lower().strip()
+#         # print(f"Cleaned safety check result: {result}")
+#         # words = [word for word in result.split() if word in ["safe", "unsafe"]]
+
+#         # # Take first valid response word
+#         # is_safe = words[0] == "safe" if words else False
+
+#         # print("Final Safety check result:", is_safe)
+
+#         is_safe = "safe" in result.lower().split()
+
+#         logger.info(
+#             f"Safety check completed - Result: {'SAFE' if is_safe else 'UNSAFE'}"
+#         )
+#         return is_safe
+
+#     except Exception as e:
+#         logger.error(f"Safety check failed: {e}")
+#         return False
 
 
 def detect_inventory_changes(game_state, output):
