@@ -9,6 +9,8 @@ from transformers import AutoModelForSequenceClassification
 from huggingface_hub import InferenceClient
 
 from transformers import pipeline
+from huggingface_hub import login
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
 import psutil
@@ -39,6 +41,7 @@ def load_env():
 def get_huggingface_api_key():
     load_env()
     huggingface_api_key = os.getenv("HUGGINGFACE_API_KEY")
+    login(token=huggingface_api_key)
     if not huggingface_api_key:
         logging.error("HUGGINGFACE_API_KEY not found in environment variables")
         raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
@@ -1131,10 +1134,19 @@ def initialize_safety_client():
         raise
 
 
+# Initialize safety model pipeline
+try:
+    safety_client = initialize_safety_client()
+
+except Exception as e:
+    logger.error(f"Failed to initialize model: {str(e)}")
+    # Fallback to CPU if GPU initialization fails
+
+
 def is_safe(message: str) -> bool:
     """Check content safety using Inference API"""
     try:
-        client = initialize_safety_client()
+        # client = initialize_safety_client()
 
         messages = [
             {"role": "user", "content": f"Check if this content is safe:\n{message}"},
@@ -1146,7 +1158,7 @@ def is_safe(message: str) -> bool:
         ]
 
         try:
-            completion = client.chat.completions.create(
+            completion = safety_client.chat.completions.create(
                 model=MODEL_CONFIG["safety_model"]["name"],
                 messages=messages,
                 max_tokens=MODEL_CONFIG["safety_model"]["max_tokens"],
