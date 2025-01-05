@@ -297,6 +297,14 @@ def initialize_inference_client():
         raise
 
 
+# Initialize inference client and make API call
+try:
+    inference_client = initialize_inference_client()
+
+except Exception as e:
+    logger.error(f"Failed to initialize the inference client model: {str(e)}")
+
+
 def load_world(filename):
     with open(filename, "r") as f:
         return json.load(f)
@@ -817,7 +825,8 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         # response = response.replace("...", ".")
 
         # Initialize client and make API call
-        client = initialize_inference_client()
+        # client = initialize_inference_client()
+        client = inference_client
 
         # Generate response using Inference API
         completion = client.chat.completions.create(
