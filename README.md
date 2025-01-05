@@ -22,6 +22,11 @@ pinned: false
 - [Project Structure](#project-structure)
 - [Technologies Used](#technologies-used)
 - [Future Enhancements](#future-enhancements)
+- [Requirements](#requirements)
+- [Deployment Options](#deployment-options)
+- [Final Words](#final-words)
+
+
 
 ## Overview
 An advanced text-based adventure game powered by Large Language Models (LLMs) that demonstrates the practical application of AI/ML in interactive entertainment. The game features dynamic quest generation, intelligent NPC interactions, and content safety validation using state-of-the-art language models.
@@ -184,6 +189,7 @@ ai_dungeon_game/
    - Real-time model updating
 
 3. **Gameplay Features**
+   - Choose character at the beginning
    - Multiplayer support
    - Advanced combat system
    - Dynamic world generation
@@ -239,9 +245,17 @@ docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/ai-dungeon:latest
 kubectl apply -f kubernetes/
 ```
 
+## Final Words
 
-This project showcases practical implementation of AI/ML in interactive entertainment, 
-demonstrating skills in LLM implementation, system design, and performance optimization.
+Thank you for exploring the AI Dungeon Game! This project showcases:
 
+- Practical AI/ML implementation in interactive gaming
+- Clean, maintainable code following best practices
+- Robust security with input validation and safety checks
+- Performance optimization and scalable architecture
+
+The codebase demonstrates strong software engineering principles while creating an engaging gaming experience. Your feedback and contributions are invaluable in making this game even better.
+
+Happy adventuring in the world of AI-powered dungeons! 🎮
 
 
