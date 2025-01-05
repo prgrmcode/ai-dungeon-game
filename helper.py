@@ -41,7 +41,7 @@ def load_env():
 def get_huggingface_api_key():
     load_env()
     huggingface_api_key = os.getenv("HUGGINGFACE_API_KEY")
-    login(token=huggingface_api_key)
+
     if not huggingface_api_key:
         logging.error("HUGGINGFACE_API_KEY not found in environment variables")
         raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
@@ -115,11 +115,10 @@ def initialize_prompt_guard():
     """Initialize Prompt Guard model"""
     try:
         api_key = get_huggingface_api_key()
-        tokenizer = AutoTokenizer.from_pretrained(
-            PROMPT_GUARD_CONFIG["model_id"], api_key=api_key
-        )
+        login(token=api_key)
+        tokenizer = AutoTokenizer.from_pretrained(PROMPT_GUARD_CONFIG["model_id"])
         model = AutoModelForSequenceClassification.from_pretrained(
-            PROMPT_GUARD_CONFIG["model_id"], api_key=api_key
+            PROMPT_GUARD_CONFIG["model_id"]
         )
         return model, tokenizer
     except Exception as e:
