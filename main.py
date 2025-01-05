@@ -9,8 +9,6 @@ from helper import (
     run_action,
     start_game,
     is_safe,
-    detect_inventory_changes,
-    update_inventory,
 )
 
 import pdb

@@ -13,15 +13,29 @@ from huggingface_hub import login
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
+import sys
+from datetime import datetime
 import psutil
 from typing import Dict, Any, Optional, Tuple
 
-# Add model caching and optimization
-from functools import lru_cache
-import torch.nn as nn
+# # Add model caching and optimization
+# from functools import lru_cache
+# import torch.nn as nn
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+
+# Custom tprint function with timestamp
+def tprint(*args, **kwargs):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{sys._getframe().f_back.f_lineno}]", *args, **kwargs)
+
+
+# Configure logging with timestamp and line numbers
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -338,7 +352,7 @@ def get_game_state(inventory: Dict = None) -> Dict[str, Any]:
         character = world["kingdoms"]["Valdor"]["towns"]["Ravenhurst"]["npcs"][
             "Elara Brightshield"
         ]
-        print(f"character in get_game_state: {character}")
+        tprint(f"character in get_game_state: {character}")
 
         game_state = {
             "name": world["name"],
@@ -366,7 +380,7 @@ def get_game_state(inventory: Dict = None) -> Dict[str, Any]:
             "reputation": {"Valdor": 0, "Ravenhurst": 0},
         }
 
-        # print(f"game_state in get_game_state: {game_state}")
+        # tprint(f"game_state in get_game_state: {game_state}")
 
         # Extract required data with fallbacks
         return game_state
@@ -791,7 +805,7 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         # # Check for None response
         # if not model_output or not isinstance(model_output, list):
         #     logger.error(f"Invalid model output: {model_output}")
-        #     print(f"Invalid model output: {model_output}")
+        #     tprint(f"Invalid model output: {model_output}")
         #     return "You look around carefully."
 
         # if not model_output[0] or not isinstance(model_output[0], dict):
@@ -804,10 +818,10 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         #     logger.error("Empty response from model")
         #     return "You look around carefully."
 
-        # print(f"Full response in run_action: {full_response}")
+        # tprint(f"Full response in run_action: {full_response}")
 
         # response = extract_response_after_action(full_response, message)
-        # print(f"Extracted response in run_action: {response}")
+        # tprint(f"Extracted response in run_action: {response}")
 
         # # Convert to second person
         # response = response.replace("Elara", "You")
@@ -837,7 +851,7 @@ Inventory: {json.dumps(game_state['inventory'])}"""
 
         response = completion.choices[0].message.content
 
-        print(f"Generated response Inference API: {response}")
+        tprint(f"Generated response Inference API: {response}")
 
         if not response:
             return "You look around carefully."
@@ -849,12 +863,12 @@ Inventory: {json.dumps(game_state['inventory'])}"""
 
         # # Perform safety check before returning
         # safe = is_safe(response)
-        # print(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
+        # tprint(f"\nSafety Check Result: {'SAFE' if safe else 'UNSAFE'}")
         # logger.info(f"Safety check result: {'SAFE' if safe else 'UNSAFE'}")
 
         # if not safe:
         #     logging.warning("Unsafe content detected - blocking response")
-        #     print("Unsafe content detected - Response blocked")
+        #     tprint("Unsafe content detected - Response blocked")
         #     return "This response was blocked for safety reasons."
 
         # if safe:
@@ -878,7 +892,7 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         if inventory_update:
             response += inventory_update
 
-        print(f"Final response in run_action: {response}")
+        tprint(f"Final response in run_action: {response}")
         # Validate response
         return response if response else "You look around carefully."
 
@@ -1320,7 +1334,7 @@ def is_safe(message: str) -> bool:
 
 #         # result = safety_tokenizer.decode(output[0], skip_special_tokens=True)
 #         result = get_safety_response(prompt)
-#         print(f"Raw safety check result: {result}")
+#         tprint(f"Raw safety check result: {result}")
 
 #         # # Extract response after prompt
 #         # if "[/INST]" in result:
@@ -1328,13 +1342,13 @@ def is_safe(message: str) -> bool:
 
 #         # # Clean response
 #         # result = result.lower().strip()
-#         # print(f"Cleaned safety check result: {result}")
+#         # tprint(f"Cleaned safety check result: {result}")
 #         # words = [word for word in result.split() if word in ["safe", "unsafe"]]
 
 #         # # Take first valid response word
 #         # is_safe = words[0] == "safe" if words else False
 
-#         # print("Final Safety check result:", is_safe)
+#         # tprint("Final Safety check result:", is_safe)
 
 #         is_safe = "safe" in result.lower().split()
 
@@ -1348,39 +1362,39 @@ def is_safe(message: str) -> bool:
 #         return False
 
 
-def detect_inventory_changes(game_state, output):
-    inventory = game_state["inventory"]
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Current Inventory: {str(inventory)}"},
-        {"role": "user", "content": f"Recent Story: {output}"},
-        {"role": "user", "content": "Inventory Updates"},
-    ]
+# def detect_inventory_changes(game_state, output):
+#     inventory = game_state["inventory"]
+#     messages = [
+#         {"role": "system", "content": system_prompt},
+#         {"role": "user", "content": f"Current Inventory: {str(inventory)}"},
+#         {"role": "user", "content": f"Recent Story: {output}"},
+#         {"role": "user", "content": "Inventory Updates"},
+#     ]
 
-    input_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
-    model_output = generator(input_text, num_return_sequences=1, temperature=0.0)
-    response = model_output[0]["generated_text"]
-    result = json.loads(response)
-    return result["itemUpdates"]
+#     input_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+#     model_output = generator(input_text, num_return_sequences=1, temperature=0.0)
+#     response = model_output[0]["generated_text"]
+#     result = json.loads(response)
+#     return result["itemUpdates"]
 
 
-def update_inventory(inventory, item_updates):
-    update_msg = ""
-    for update in item_updates:
-        name = update["name"]
-        change_amount = update["change_amount"]
-        if change_amount > 0:
-            if name not in inventory:
-                inventory[name] = change_amount
-            else:
-                inventory[name] += change_amount
-            update_msg += f"\nInventory: {name} +{change_amount}"
-        elif name in inventory and change_amount < 0:
-            inventory[name] += change_amount
-            update_msg += f"\nInventory: {name} {change_amount}"
-        if name in inventory and inventory[name] < 0:
-            del inventory[name]
-    return update_msg
+# def update_inventory(inventory, item_updates):
+#     update_msg = ""
+#     for update in item_updates:
+#         name = update["name"]
+#         change_amount = update["change_amount"]
+#         if change_amount > 0:
+#             if name not in inventory:
+#                 inventory[name] = change_amount
+#             else:
+#                 inventory[name] += change_amount
+#             update_msg += f"\nInventory: {name} +{change_amount}"
+#         elif name in inventory and change_amount < 0:
+#             inventory[name] += change_amount
+#             update_msg += f"\nInventory: {name} {change_amount}"
+#         if name in inventory and inventory[name] < 0:
+#             del inventory[name]
+#     return update_msg
 
 
 logging.info("Finished helper function")
