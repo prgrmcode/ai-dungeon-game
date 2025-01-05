@@ -280,7 +280,7 @@ system_prompt = """You are an AI Game master. Your job is to write what happens 
 CRITICAL Rules:
 - Write EXACTLY 3 sentences maximum
 - Use daily English language
-- Start with "You see", "You hear", or "You feel"
+- Start with "You "
 - Don't use 'Elara' or 'she/he', only use 'you'
 - Use only second person ("you")
 - Never include dialogue after the response
@@ -291,7 +291,7 @@ CRITICAL Rules:
 - Never use ellipsis (...)
 - Never include 'What would you like to do?' or similar prompts
 - Always finish with one real response
-- End the response with a period"""
+- End the response with a period(.)"""
 
 
 def get_game_state(inventory: Dict = None) -> Dict[str, Any]:
@@ -748,9 +748,9 @@ Inventory: {json.dumps(game_state['inventory'])}"""
         #     return "This response was blocked for safety reasons."
 
         # Safety check using API
-        if not is_safe(message):
-            logger.warning("Unsafe content detected in user prompt")
-            return "I cannot process that request for safety reasons."
+        if not is_safe(response):
+            logger.warning("Unsafe content detected - blocking response")
+            return "This response was blocked for safety reasons."
 
         # Check for quest completion
         quest_completed, quest_message = check_quest_completion(message, game_state)
