@@ -111,9 +111,12 @@ PROMPT_GUARD_CONFIG = {
 def initialize_prompt_guard():
     """Initialize Prompt Guard model"""
     try:
-        tokenizer = AutoTokenizer.from_pretrained(PROMPT_GUARD_CONFIG["model_id"])
+        api_key = get_huggingface_api_key()
+        tokenizer = AutoTokenizer.from_pretrained(
+            PROMPT_GUARD_CONFIG["model_id"], api_key=api_key
+        )
         model = AutoModelForSequenceClassification.from_pretrained(
-            PROMPT_GUARD_CONFIG["model_id"]
+            PROMPT_GUARD_CONFIG["model_id"], api_key=api_key
         )
         return model, tokenizer
     except Exception as e:
