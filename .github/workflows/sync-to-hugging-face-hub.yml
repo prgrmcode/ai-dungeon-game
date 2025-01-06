@@ -15,6 +15,9 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Pull LFS files
+        run: git lfs pull
+
       - name: Login to Hugging Face
         run: |
           pip install --upgrade huggingface_hub
@@ -23,4 +26,6 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon main
+        run: |
+          git lfs push --all https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon
+          git push https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon main
