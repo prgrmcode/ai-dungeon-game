@@ -15,8 +15,18 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Setup Git LFS
+        run: |
+          git lfs install
+          git lfs track "*.gif"
+
       - name: Pull LFS files
         run: git lfs pull
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
 
       - name: Login to Hugging Face
         run: |
@@ -27,5 +37,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git lfs push --all https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon
+          git add .gitattributes
+          git commit -m "Update LFS tracking" || true
+          git lfs push --all origin main
           git push https://Prgrmmer:$HF_TOKEN@huggingface.co/spaces/Prgrmmer/ai-dungeon main
