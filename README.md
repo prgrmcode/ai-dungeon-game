@@ -31,8 +31,7 @@ pinned: false
 ## Overview
 An advanced text-based adventure game powered by Large Language Models (LLMs) that demonstrates the practical application of AI/ML in interactive entertainment. The game features dynamic quest generation, intelligent NPC interactions, and content safety validation using state-of-the-art language models.
 
-![AI Dungeon Gameplay Demo](assets/AI_Dungeon_Game.gif)
-*Gameplay demonstration showing prompts and responses*
+
 
 ## Technical Architecture
 - **Core Engine**: Python-based game engine with modular architecture
