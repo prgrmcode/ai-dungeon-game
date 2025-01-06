@@ -36,12 +36,22 @@ jobs:
           pip install --upgrade huggingface_hub
           huggingface-cli login --token ${{ secrets.HUGGINGFACE_API_KEY }}
    
-      - name: Push to hub
+      - name: Sync and Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
+          # Configure remote
+          git remote set-url origin https://Prgrmmer:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/Prgrmmer/ai-dungeon
+          
+          # Pull latest changes
+          git pull origin main --rebase
+          
+          # Add and commit LFS config
           git add .gitattributes
           git commit -m "Update LFS tracking" || true
-          git remote set-url origin https://Prgrmmer:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/Prgrmmer/ai-dungeon
+          
+          # Push LFS objects and changes
           git lfs push --all origin main
           git push origin main
+      
+      
