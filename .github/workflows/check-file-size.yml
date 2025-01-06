@@ -10,8 +10,17 @@ on:               # or directly `on: [push]` to run the action on every push on 
 jobs:
   sync-to-hub:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
       - name: Check large files
         uses: ActionsDesk/lfs-warning@v2.0
         with:
           filesizelimit: 10485760 # this is 10MB so we can sync to HF Spaces
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
