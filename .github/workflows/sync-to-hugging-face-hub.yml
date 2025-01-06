@@ -16,12 +16,12 @@ jobs:
           lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Git LFS
+      - name: Setup Git LFS and Files
         run: |
           git lfs install
+          echo "*.gif filter=lfs diff=lfs merge=lfs -text" > .gitattributes
           git lfs track "*.gif"
           git config lfs.https://huggingface.co/spaces/Prgrmmer/ai-dungeon.locksverify false
-
 
       - name: Configure Git
         run: |
@@ -40,17 +40,10 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Configure remote
           git remote set-url origin https://Prgrmmer:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/Prgrmmer/ai-dungeon
-          
-          # Pull latest changes
-          git pull origin main --rebase
-          
-          # Add and commit LFS config
           git add .gitattributes
-          git commit -m "Update LFS tracking" || true
-          
-          # Push LFS objects and changes
+          git commit -m "Add Git LFS configuration" || true
+          git pull origin main --rebase
           git lfs push --all origin main
           git push origin main
       
