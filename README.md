@@ -107,7 +107,7 @@ pip install transformers
 pip install gradio
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 pip install psutil
-pip install 'accelerate>=0.26.0
+pip install 'accelerate>=0.26.0'
 
 # Create a .env file in the root directory of the project and add your environment variables:
 HUGGINGFACE_API_KEY=your_api_key_here
